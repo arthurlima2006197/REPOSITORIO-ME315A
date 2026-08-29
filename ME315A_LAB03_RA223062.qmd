@@ -1,0 +1,124 @@
+---
+title: "ME315A LAB03 RA223062"
+format: html
+editor: visual
+---
+
+# Laboratório 3: Dados relacionais e operações do tipo join
+
+## Questões
+
+1.  Importe, utilizando o pacote `readr`, cada um dos três arquivos disponíveis. Os objetos resultantes devem ser chamados `flights, airlines e airports`.
+
+- Para o arquivo de aeroportos, importe apenas as colunas `IATA_CODE, CITY, STATE,   LATITUDE, LONGITUDE`;
+- Para o arquivo de vôos:
+
+a)  Importe apenas as colunas`DESTINATION_AIRPORT` e `ARRIVAL_DELAY`;
+b)  Leia apenas 1 milhão de linhas por vez;
+c)  Remova vôos em que o aeroporto de destino comece com a letra 1;
+d)  Remova registros em que existam pelo menos uma coluna faltante;
+e)  Determine, para cada parte do arquivo, as estatísticas suficientes para a determinação do atraso médio por aeroporto de destino;
+f)  Ao finalizar a leitura do arquivo, combine as estatísticas suficientes de modo a produzir a média de atraso por aeroporto.
+
+```{r}
+library(readr)
+library(dplyr)
+
+col_flights <- cols_only(
+  DESTINATION_AIRPORT = "c",
+  ARRIVAL_DELAY = "d"
+)
+
+flights_function <- function(input, pos) {
+  input %>% 
+    filter(
+      !startsWith(DESTINATION_AIRPORT, "1"),
+      !is.na(DESTINATION_AIRPORT),
+      !is.na(ARRIVAL_DELAY)
+    ) %>%
+    group_by(DESTINATION_AIRPORT) %>%
+    summarise(
+      delay_sums = sum(ARRIVAL_DELAY),
+      flights_total = n(),
+      .groups = "drop"
+    )
+}
+
+flights <- read_csv_chunked(file = "flights.csv",
+                         col_types = col_flights,
+                         chunk_size = 1e6,
+                         callback = DataFrameCallback$new(flights_function)
+                         )
+flights <- flights %>%
+  group_by(DESTINATION_AIRPORT) %>%
+  summarise(
+    delay_mean = sum(delay_sums) / sum(flights_total),
+    .groups = "drop"
+  )
+
+col_airports <- cols_only(
+  IATA_CODE = "c",
+  CITY = "c",
+  STATE = "c",
+  LATITUDE = "d",
+  LONGITUDE = "d"
+)
+airports <- read_csv("airports.csv", col_types = col_airports)
+
+airlines <- read_csv("airlines.csv")
+```
+
+2.  Selecione a operação apropriada `join` para incluir, na tabela `flights`, as colunas `CITY` e `STATE` do objeto `airports`. Para executar esta tarefa:
+
+a)  Identifique a coluna que é a chave na tabela `flights`; Resposta: é a coluna "DESTINATION_AIRPORT".
+b)  Identifique a coluna que é a chave na tabela `airports`; Resposta: é a coluna "IATA_CODE".
+c)  Quais são os aeroportos que estão listados em `flights`, mas estão ausentes em `airports`? Resposta: todos os aeroportos listados em flights estão presentes em airports.
+d)  Apresente o comando que combine ambas as tabelas, indicando explicitamente as chaves;
+e)  Armazene a tabela resultante no objeto `flights`.
+
+```{r}
+flights <- flights %>%
+  left_join(
+    airports %>% select(IATA_CODE, CITY, STATE, LATITUDE, LONGITUDE), 
+    by = c("DESTINATION_AIRPORT" = "IATA_CODE")
+  )
+flights
+missing_airports <- anti_join(flights, airports, by = c("DESTINATION_AIRPORT" = "IATA_CODE"))
+missing_airports
+```
+
+3.  Quantos aeroportos cada estado possui? Apresente uma tabela ordenada de forma decrescente (no número de aeroportos).
+
+```{r}
+table <- flights %>%
+  group_by(STATE) %>%
+  summarise(airports_by_state = n_distinct(DESTINATION_AIRPORT)) %>%
+  arrange(desc(airports_by_state))
+table
+```
+
+4.  Apresente um mapa representando todos os atrasos observados por aeroporto.
+
+a)  Carregue o pacote `leaflet`;
+b)  Combine os comandos `leaflet, addTiles e addMarkers` para a criação de um mapa básico;
+c)  Armazene o grafico em b) numa variável chamada `this`.
+d)  Adicione as duas linhas abaixo após a criação da variável `this` (apenas se você estiver usando Jupyter): (NÃO FOI UTILIZADO JUPYTER, SOMENTE POSIT.CLOUD/RSTUDIO)
+
+```{r}
+library(leaflet)
+
+this <- leaflet(data = flights %>% filter(!is.na(LATITUDE), !is.na(LONGITUDE))) %>%
+  addTiles() %>%
+  addMarkers(
+    lng = ~LONGITUDE,
+    lat = ~LATITUDE
+  )
+this
+```
+
+Horário de compilação do arquivo:
+
+```{r}
+Sys.setenv(TZ = "America/Sao_Paulo")
+Sys.time()
+```
