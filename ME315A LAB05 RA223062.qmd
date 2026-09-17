@@ -1,0 +1,66 @@
+---
+title: "Arthur Davi Prado de Lima / RA:223062"
+format: html
+editor: source
+---
+
+# Laboratório 5: Laboratório Especial
+
+### Para desenvolver o código do mapa, tive o auxílio de ferramentas de IA, principalmente com o objetivo de entender a sintaxe e criar meu próprio código.
+
+```{r}
+library(dplyr)
+library(readr)
+library(leaflet)
+analisa_aeronave <- function(tail_number, arquivo) {
+  funcao_callback <- function(input, pos) {
+  input %>% filter(TAIL_NUMBER == tail_number)
+}
+  tabela_base <- read_csv_chunked(file = arquivo,
+                                  callback = DataFrameCallback$new(funcao_callback),
+                                  chunk_size = 1e5)
+  base_aeroportos <- read_csv("airports.csv") %>%
+    select(IATA_CODE, LATITUDE, LONGITUDE)
+  tabela_tratada <- tabela_base %>%
+    arrange(YEAR, MONTH, DAY, SCHEDULED_DEPARTURE) %>%
+    left_join(base_aeroportos, by = c("ORIGIN_AIRPORT" = "IATA_CODE")) %>%
+    rename(lat_orig = LATITUDE, lon_orig = LONGITUDE) %>%
+    left_join(base_aeroportos, by = c("DESTINATION_AIRPORT" = "IATA_CODE")) %>%
+    rename(lat_dest = LATITUDE, lon_dest = LONGITUDE) %>%
+    filter(!is.na(AIR_TIME), !is.na(lat_orig), !is.na(lon_orig), !is.na(lat_dest), !is.na(lon_dest)) %>%
+    mutate(velocidade_media = DISTANCE / (AIR_TIME / 60))
+  mapa_trajeto <- leaflet() %>% addTiles()
+  for(i in 1:nrow(tabela_tratada)) {
+    voo_atual <- tabela_tratada[i, ]
+    espessura_linha <- voo_atual$velocidade_media / 80
+    mapa_trajeto <- mapa_trajeto %>%
+      addPolylines(
+        lng = c(voo_atual$lon_orig, voo_atual$lon_dest),
+        lat = c(voo_atual$lat_orig, voo_atual$lat_dest),
+        weight = espessura_linha,
+        color = "#1f78b4",
+        opacity = 0.7
+      ) %>%
+      addCircleMarkers(
+        lng = voo_atual$lon_orig,
+        lat = voo_atual$lat_orig,
+        radius = 1,
+        color = "red"
+      )
+  }
+  return(list(
+    tabela = tabela_tratada,
+    grafico = mapa_trajeto
+  ))
+}
+resultado_final <- analisa_aeronave(tail_number = "N431WN", arquivo = "flights.csv")
+resultado_final$tabela
+resultado_final$grafico
+```
+
+Horário de compilação do arquivo: 
+
+```{r}
+Sys.setenv(TZ = "America/Sao_Paulo")
+Sys.time()
+```
